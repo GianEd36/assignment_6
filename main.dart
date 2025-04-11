@@ -3,86 +3,121 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 void main() {
-  runApp(MapApp());
+  runApp(PolylineApp());
 }
 
-class MapApp extends StatelessWidget {
-  const MapApp({super.key});
+class PolylineApp extends StatelessWidget {
+  const PolylineApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(home: MapScreen());
+    return MaterialApp(home: PolylineScreen());
   }
 }
 
-class MapScreen extends StatefulWidget {
-  MapScreen({super.key});
+class PolylineScreen extends StatefulWidget {
+  PolylineScreen({super.key});
 
   @override
-  State<MapScreen> createState() => _MapScreenState();
+  State<PolylineScreen> createState() => _PolylineScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _PolylineScreenState extends State<PolylineScreen> {
   late GoogleMapController mapController;
+  Set<Marker> markers = {};
+  List<LatLng> polylinePoints = [];
+  Set<Polyline> polylines = {};
+  LatLng? startPoint;
+  LatLng? endPoint;
 
-  Set<Marker> markers = {
-    // Marker(
-    //   markerId: MarkerId('01'),
-    //   position: LatLng(15.987668, 120.573004),
-    //   infoWindow: InfoWindow(title: 'Urdaneta'),
-    // ),
-    // Marker(
-    //   markerId: MarkerId('02'),
-    //   position: LatLng(16.03036585722708, 120.33268377759823),
-    //   infoWindow: InfoWindow(title: 'Dagupan'),
-    // ),
-  };
-
-  void markLocation(LatLng position) {
-    markers.clear();
-    markers.add(Marker(markerId: MarkerId('${position}'), position: position));
-    setState(() {});
-  }
-
-  void gotoLocation() async {
-    if (!await checkLocationServicePermission()) {
-      return;
-    }
-    // var geoPosition = await Geolocator.getCurrentPosition();
-    // markLocation(LatLng(geoPosition.latitude, geoPosition.longitude));
-    await Geolocator.getPositionStream().listen((geoPosition) {
-      markLocation(LatLng(geoPosition.latitude, geoPosition.longitude));
-      mapController.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(geoPosition.latitude, geoPosition.longitude),
-            zoom: 12,
+  void _handleTap(LatLng tappedPoint) {
+    setState(() {
+      if (startPoint == null) {
+        startPoint = tappedPoint;
+        markers.add(
+          Marker(
+            markerId: MarkerId('start'),
+            position: startPoint!,
+            infoWindow: InfoWindow(title: 'Start Point'),
           ),
-        ),
-      );
+        );
+      } else if (endPoint == null) {
+        endPoint = tappedPoint;
+        markers.add(
+          Marker(
+            markerId: MarkerId('end'),
+            position: endPoint!,
+            infoWindow: InfoWindow(title: 'End Point'),
+          ),
+        );
+        // Draw the polyline
+        polylinePoints.clear();
+        polylinePoints.add(startPoint!);
+        polylinePoints.add(endPoint!);
+        polylines.add(
+          Polyline(
+            polylineId: PolylineId('route'),
+            points: polylinePoints,
+            color: Colors.blue,
+            width: 5,
+          ),
+        );
+        // Reset for the next polyline
+        startPoint = null;
+        endPoint = null;
+      } else {
+        // If both points are selected, clear everything for a new selection
+        markers.clear();
+        polylines.clear();
+        startPoint = tappedPoint;
+        endPoint = null;
+        markers.add(
+          Marker(
+            markerId: MarkerId('start'),
+            position: startPoint!,
+            infoWindow: InfoWindow(title: 'Start Point'),
+          ),
+        );
+      }
     });
   }
 
-  @override
-  void initState() {
-    super.initState();
-    gotoLocation();
+  void _goToCurrentLocation() async {
+    if (!await _checkLocationServicePermission()) {
+      return;
+    }
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      mapController.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(position.latitude, position.longitude),
+            zoom: 15,
+          ),
+        ),
+      );
+    } catch (e) {
+      print("Error getting current location: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not get current location.')),
+      );
+    }
   }
 
-  Future<bool> checkLocationServicePermission() async {
-    //check for the locationservice
+  Future<bool> _checkLocationServicePermission() async {
     bool isEnabled = await Geolocator.isLocationServiceEnabled();
     if (!isEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Location services is disabled. Please enable it in the settings.',
+            'Location services are disabled. Please enable them in the settings.',
           ),
         ),
       );
       return false;
     }
-    //check permissions, if these are set
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -90,7 +125,7 @@ class _MapScreenState extends State<MapScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Location permission is denied. Please accept the location permission for the app to work.',
+              'Location permission denied. Please allow location access for the app.',
             ),
           ),
         );
@@ -101,7 +136,7 @@ class _MapScreenState extends State<MapScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Location permission is permanently denied. Please allow in the settings to continue',
+            'Location permission permanently denied. Please enable it in app settings.',
           ),
         ),
       );
@@ -113,29 +148,31 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: GoogleMap(
-          onMapCreated: (controller) {
-            mapController = controller;
-          },
-          markers: markers,
-          mapType: MapType.normal,
-          mapToolbarEnabled: true,
-          myLocationButtonEnabled: true,
-          myLocationEnabled: true,
-          zoomControlsEnabled: true,
-          zoomGesturesEnabled: true,
-          initialCameraPosition: CameraPosition(
-            target: LatLng(15.98776584206113, 120.57316910317932),
-            zoom: 10,
-            // tilt: 60,
+      appBar: AppBar(
+        title: Text('Polyline on Map'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.my_location),
+            onPressed: _goToCurrentLocation,
           ),
-          onTap: (position) {
-            print(position.latitude);
-            print(position.longitude);
-            markLocation(position);
-          },
+        ],
+      ),
+      body: GoogleMap(
+        onMapCreated: (controller) {
+          mapController = controller;
+        },
+        initialCameraPosition: CameraPosition(
+          target: LatLng(
+            15.98776584206113,
+            120.57316910317932,
+          ), // Initial view of Urdaneta
+          zoom: 12,
         ),
+        markers: markers,
+        polylines: polylines,
+        onTap: _handleTap,
+        myLocationButtonEnabled: false,
+        myLocationEnabled: true,
       ),
     );
   }
