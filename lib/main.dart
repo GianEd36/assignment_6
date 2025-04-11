@@ -62,11 +62,11 @@ class _PolylineScreenState extends State<PolylineScreen> {
             width: 5,
           ),
         );
+      } else {
+        // If both points are selected, clear everything for a new selection
         // Reset for the next polyline
         startPoint = null;
         endPoint = null;
-      } else {
-        // If both points are selected, clear everything for a new selection
         markers.clear();
         polylines.clear();
         startPoint = tappedPoint;
